@@ -1,0 +1,33 @@
+Dim BlkFullPath As String
+                        Dim currDwgDB As Database = myAcadApp.DocumentManager.MdiActiveDocument.Database
+                        Try
+                            ' Awesome! this seaches the support paths for the file and if found returns the full path with file name.  
+                            BlkFullPath = HostApplicationServices.Current.FindFile(BlkName & ".dwg", currDwgDB, FindFileHint.Default)
+                        Catch ex As Autodesk.AutoCAD.Runtime.Exception
+                            MessageBox.Show(ex.Message & ": " & BlkName & ".dwg" & " not found in support paths.", "", MessageBoxButtons.OK, MessageBoxIcon.Exclamation)
+                            Exit Sub
+                        End Try
+
+                        Using acLckDoc As DocumentLock = SheetDoc.LockDocument()
+
+                            Using trx As Transaction = mySheetDB.TransactionManager.StartTransaction
+                                Dim ObjId As ObjectId
+                                Dim bt As BlockTable = mySheetDB.BlockTableId.GetObject(OpenMode.ForRead)
+                                Dim btrMs As BlockTableRecord = bt(BlockTableRecord.PaperSpace).GetObject(OpenMode.ForWrite)
+                                Using dbInsert As New Database(False, True)
+                                    dbInsert.ReadDwgFile(BlkFullPath, IO.FileShare.Read, True, "")
+                                    ObjId = mySheetDB.Insert(Path.GetFileNameWithoutExtension(BlkFullPath), dbInsert, True)
+                                End Using
+
+                                Dim BlkRef As New BlockReference(New Point3d(BlkX, BlkY, 0), ObjId)
+                                btrMs.AppendEntity(BlkRef)
+                                trx.AddNewlyCreatedDBObject(BlkRef, True)
+
+                                ' explode the block
+                                BlkRef.ExplodeToOwnerSpace()
+                                ' when using ExplodeToOwnerSpace, if you dont do this then the block is retained in the drawing.
+                                BlkRef.Erase(True)
+
+                                trx.Commit()
+                            End Using
+                        End Using
